@@ -1,0 +1,110 @@
+import requests
+import re
+import execjs
+import hashlib
+import json
+from requests.utils import add_dict_to_cookiejar
+from bs4 import BeautifulSoup
+
+def getCookie(data):
+#     """
+#     通过加密对比得到正确cookie参数
+#     :param data: 参数
+#     :return: 返回正确cookie参数
+#     """
+    chars = len(data['chars'])
+    for i in range(chars):
+        for j in range(chars):
+            clearance = data['bts'][0] + data['chars'][i] + data['chars'][j] + data['bts'][1]
+            encrypt = None
+            if data['ha'] == 'md5':
+                encrypt = hashlib.md5()
+            elif data['ha'] == 'sha1':
+                encrypt = hashlib.sha1()
+            elif data['ha'] == 'sha256':
+                encrypt = hashlib.sha256()
+            encrypt.update(clearance.encode())
+            result = encrypt.hexdigest()
+            if result == data['ct']:
+                return clearance
+
+# url = 'https://www.yidaiyilu.gov.cn/xwzx/gnxw/189125.htm'
+def run(url):
+        header = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                          'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
+        }
+        # 使用session保持会话
+        session = requests.session()
+        res1 = session.get(url, headers=header)
+        jsl_clearance_s = re.findall(r'cookie=(.*?);location', res1.text)[0]
+        # 执行js代码
+        jsl_clearance_s = str(execjs.eval(jsl_clearance_s)).split('=')[1].split(';')[0]
+        # add_dict_to_cookiejar方法添加cookie
+        add_dict_to_cookiejar(session.cookies, {'__jsl_clearance_s': jsl_clearance_s})
+        res2 = session.get(url, headers=header)
+        # 提取go方法中的参数
+        data = json.loads(re.findall(r';go\((.*?)\)', res2.text)[0])
+        jsl_clearance_s = getCookie(data)
+        # 修改cookie
+        add_dict_to_cookiejar(session.cookies, {'__jsl_clearance_s': jsl_clearance_s})
+        res3 = session.get(url, headers=header)
+        res3.encoding = res3.apparent_encoding
+        return res3.text
+
+def parse(url):
+    html=run(url)
+    soup=BeautifulSoup(html,'html5lib')
+    return soup
+
+def getsuburl(url):
+    soup=parse(url)
+    a_soup=soup.find_all('a')
+    biaoqian=[]
+    a_list=list(a_soup)
+    for i in range(len(a_list)):
+        a_list[i]=str(a_list[i])
+    for i in range(len(a_list)):
+        if '<h1>' in a_list[i]:
+            biaoqian.append(a_list[i])
+    sub_url=[]
+    for i in range(len(biaoqian)):
+        pattern = re.compile('"(.*)m"')
+        myStr = biaoqian[i]
+        str1=pattern.findall(myStr)[0]
+        str1='https://www.yidaiyilu.gov.cn'+str1+'m'
+        sub_url.append(str1)
+    return sub_url
+
+def get_and_write(url):
+    soup=parse(url)
+    content=[]
+    for i in range(-7,-len(soup.find_all('p')),-1):
+        content.append(soup.find_all('p')[i].text)
+    title=soup.find_all('h1')[1].text
+    _date=soup.find_all('span',{"class":"main_content_date"})[0].text
+    content.append(_date[0:-9])
+    content.append(title)
+    content=content[::-1]
+    
+    name='C:\\Users\\86189\\Desktop\\ydyl\\国内新闻\\'+_date[0:-9]+' '+validateTitle(title)+'.txt'
+    file = open(name, 'w',encoding='utf-8')
+    for i in range(len(content)):
+        s = str(content[i]).replace('{', '').replace('}', '').replace("'", '').replace(':', ',') + '\n'
+        file.write(s)
+    file.close()
+
+def validateTitle(title):
+    rstr = r"[\/\\\:\*\?\"\<\>\|]"  # '/\:*?"<>|'
+    new_title = re.sub(rstr, "", title)
+    return new_title
+#去除非法命名
+
+#国内新闻2020-01-01至2021-10-07
+
+for i in range(563):
+    url='https://www.yidaiyilu.gov.cn/info/iList.jsp?cat_id=10005&cur_page='+str(i+1)
+    allsoup=getsuburl(url)
+    for j in allsoup:
+        get_and_write(j)
+    print("已经爬取到第"+str(i+1)+"页")
