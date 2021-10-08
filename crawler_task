@@ -100,7 +100,7 @@ def validateTitle(title):
     return new_title
 #去除非法命名
 
-#国内新闻2020-01-01至2021-10-07
+#海外新闻2020-01-01至2021-10-07
 
 for i in range(563):
     url='https://www.yidaiyilu.gov.cn/info/iList.jsp?cat_id=10005&cur_page='+str(i+1)
